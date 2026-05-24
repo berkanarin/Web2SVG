@@ -107,12 +107,6 @@ Ctrl+Shift+S
 
 The app captures the current browser state without needing to move the mouse back to the control panel.
 
-## More Detailed Layers
-
-Keep `Split repeated items` off for the safest default behavior.
-
-Turn it on when a row/grid of repeated cards, menu tiles, icon links, or category blocks is captured as one large layer. Web2SVG will try to detect similarly sized sibling items and export them as separate layers while keeping the normal layout capture behavior unchanged.
-
 ## Quality Settings
 
 The default UI setting is:
@@ -137,12 +131,6 @@ More detailed layer detection:
 
 ```powershell
 corepack pnpm capture -- --url https://example.com --out exports/current --mode dense --max-layers 140
-```
-
-Split repeated item rows:
-
-```powershell
-corepack pnpm capture -- --url https://example.com --out exports/current --split-items
 ```
 
 Full page capture:

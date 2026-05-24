@@ -52,7 +52,6 @@ Options:
   --min-area <px>        Minimum CSS pixel area for layer candidates. Default: 2500
   --mode <semantic|dense> Layer discovery mode. Default: semantic
   --interactive          Open a visible browser and capture when Ctrl+Shift+S is pressed.
-  --split-items          Split repeated grid/list items into separate layers.
   --profile <dir>        Persistent browser profile directory for login sessions.
   --wait <ms>            Extra wait after network idle. Default: 1000
   --timeout <ms>         Navigation/screenshot timeout. Default: 45000
@@ -100,8 +99,7 @@ function readOptions(): CaptureOptions {
     embed: !args.has("no-embed"),
     interactive: asBooleanFlag(args, "interactive", false),
     profileDir: args.has("profile") ? path.resolve(String(args.get("profile"))) : null,
-    flatOnly: false,
-    splitRepeatedItems: asBooleanFlag(args, "split-items", false)
+    flatOnly: false
   };
 }
 

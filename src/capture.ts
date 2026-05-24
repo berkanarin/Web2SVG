@@ -235,7 +235,7 @@ async function collectCandidates(
   captureCssHeight: number
 ): Promise<LayerCandidate[]> {
   return page.evaluate(
-    ({ mode, minArea, maxLayers, captureCssHeight, splitRepeatedItems }) => {
+    ({ mode, minArea, maxLayers, captureCssHeight }) => {
       const semanticTags = new Set([
         "HEADER",
         "NAV",
@@ -266,29 +266,7 @@ async function collectCandidates(
       const textTags = new Set(["H1", "H2", "H3", "P", "A", "BUTTON"]);
       const candidates: Array<LayerCandidate & { score: number }> = [];
       const all = Array.from(document.body?.querySelectorAll<HTMLElement>("*") ?? []);
-      const splitItemElements = new WeakSet<HTMLElement>();
       let domIndex = 0;
-
-      function visibleBox(element: HTMLElement): DOMRect | null {
-        const rect = element.getBoundingClientRect();
-        const style = window.getComputedStyle(element);
-        if (
-          style.display === "none" ||
-          style.visibility === "hidden" ||
-          Number.parseFloat(style.opacity || "1") <= 0 ||
-          rect.width < 12 ||
-          rect.height < 12 ||
-          rect.width * rect.height < minArea ||
-          rect.left + rect.width <= 0 ||
-          rect.left >= window.innerWidth ||
-          rect.top + rect.height <= 0 ||
-          rect.top >= captureCssHeight
-        ) {
-          return null;
-        }
-
-        return rect;
-      }
 
       function selectorFor(element: HTMLElement): string {
         const tag = element.tagName.toLowerCase();
@@ -305,12 +283,10 @@ async function collectCandidates(
       }
 
       function labelFor(element: HTMLElement, tag: string, role: string | null, reason: string): string {
-        const textHint = reason === "split-item" ? element.innerText?.trim().slice(0, 64) : "";
         const source =
           element.getAttribute("aria-label") ||
           element.id ||
           Array.from(element.classList).find((item) => nameHint.test(item)) ||
-          textHint ||
           role ||
           reason ||
           tag.toLowerCase();
@@ -330,47 +306,6 @@ async function collectCandidates(
           cursor = cursor.parentElement;
         }
         return depth;
-      }
-
-      if (splitRepeatedItems) {
-        for (const parent of all) {
-          const children = Array.from(parent.children).filter(
-            (child): child is HTMLElement => child instanceof HTMLElement
-          );
-          if (children.length < 3) continue;
-
-          const visibleChildren = children
-            .map((child) => ({ child, rect: visibleBox(child) }))
-            .filter((item): item is { child: HTMLElement; rect: DOMRect } => Boolean(item.rect));
-          if (visibleChildren.length < 3) continue;
-
-          const groups = new Map<string, Array<{ child: HTMLElement; rect: DOMRect }>>();
-          for (const item of visibleChildren) {
-            const key = [
-              Math.round(item.rect.width / 24),
-              Math.round(item.rect.height / 24),
-              Math.round(item.rect.top / 24)
-            ].join(":");
-            const group = groups.get(key) ?? [];
-            group.push(item);
-            groups.set(key, group);
-          }
-
-          for (const group of groups.values()) {
-            if (group.length < 3) continue;
-            for (const item of group) {
-              splitItemElements.add(item.child);
-              const fillChild = item.child.querySelector<HTMLElement>("a, button, [role='button'], [role='link']");
-              if (fillChild) {
-                const fillRect = fillChild.getBoundingClientRect();
-                const similarSize =
-                  Math.abs(fillRect.width - item.rect.width) <= 8 &&
-                  Math.abs(fillRect.height - item.rect.height) <= 8;
-                if (similarSize) splitItemElements.add(fillChild);
-              }
-            }
-          }
-        }
       }
 
       for (const element of all) {
@@ -413,7 +348,6 @@ async function collectCandidates(
           mode === "dense" && Boolean(element.closest("a, button")) && area >= minArea * 2;
         const isFloating = style.position === "fixed" || style.position === "sticky";
         const hasPaint = style.backgroundImage !== "none" || style.boxShadow !== "none";
-        const isSplitItem = splitRepeatedItems && splitItemElements.has(element);
         const includeDense = mode === "dense" && (area >= minArea * 2 || isMedia || isInteractive || isText);
         const includeSemantic =
           isSemanticTag ||
@@ -424,7 +358,6 @@ async function collectCandidates(
           isLargeBlock ||
           isFloating ||
           hasPaint ||
-          isSplitItem ||
           isInteractive;
 
         if (!includeSemantic && !includeDense) continue;
@@ -436,7 +369,6 @@ async function collectCandidates(
         else if (isNameHint) reason = "name";
         else if (isMedia) reason = "media";
         else if (isText) reason = "text";
-        else if (isSplitItem) reason = "split-item";
         else if (isLargeBlock) reason = "block";
         else if (hasPaint) reason = "paint";
         else if (isInteractive) reason = "interactive";
@@ -449,7 +381,6 @@ async function collectCandidates(
           (isNameHint ? 35 : 0) +
           (isMedia ? 30 : 0) +
           (isText ? 25 : 0) +
-          (isSplitItem ? 70 : 0) +
           (isLargeBlock ? 20 : 0) +
           (hasPaint ? 15 : 0) +
           Math.min(40, area / 20000) +
@@ -549,8 +480,7 @@ async function collectCandidates(
       mode: options.mode,
       minArea: options.minArea,
       maxLayers: options.maxLayers,
-      captureCssHeight,
-      splitRepeatedItems: options.splitRepeatedItems
+      captureCssHeight
     }
   );
 }

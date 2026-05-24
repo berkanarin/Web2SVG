@@ -94,8 +94,7 @@ function makeOptions(body: Record<string, unknown>, url: string): CaptureOptions
     embed: booleanValue(body.embed, true),
     interactive: false,
     profileDir: path.resolve(rootDir, "profiles", profileName),
-    flatOnly: true,
-    splitRepeatedItems: booleanValue(body.splitRepeatedItems, false)
+    flatOnly: true
   };
 }
 
@@ -523,11 +522,6 @@ function renderApp(): string {
         Full page capture
       </label>
 
-      <label>
-        <input id="splitRepeatedItems" type="checkbox" style="width:auto;min-height:auto;margin-right:0.5rem" />
-        Split repeated items
-      </label>
-
       <div class="actions">
         <button id="open" class="primary">Open Browser</button>
         <button id="capture" class="capture" disabled>Capture Now</button>
@@ -581,8 +575,7 @@ function renderApp(): string {
         scale: Number($("scale").value),
         width: Number($("width").value),
         height: Number($("height").value),
-        fullPage: $("fullPage").checked,
-        splitRepeatedItems: $("splitRepeatedItems").checked
+        fullPage: $("fullPage").checked
       };
     }
 

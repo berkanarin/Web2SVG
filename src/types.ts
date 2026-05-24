@@ -16,7 +16,6 @@ export interface CaptureOptions {
   interactive: boolean;
   profileDir: string | null;
   flatOnly: boolean;
-  splitRepeatedItems: boolean;
 }
 
 export interface LayerCandidate {
