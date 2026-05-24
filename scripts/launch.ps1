@@ -14,19 +14,15 @@ function Test-Web2SvgServer {
 
 Set-Location $root
 
-if (Test-Web2SvgServer) {
-  if (Test-Path (Join-Path $root "dist\open-panel.js")) {
-    Start-Process `
-      -FilePath "node.exe" `
-      -ArgumentList @((Join-Path $root "dist\open-panel.js"), $url) `
-      -WorkingDirectory $root `
-      -WindowStyle Hidden `
-      -RedirectStandardOutput (Join-Path $root "logs\panel.out.log") `
-      -RedirectStandardError (Join-Path $root "logs\panel.err.log")
-  } else {
-    Start-Process $url
-  }
-  return
+Write-Host ""
+Write-Host "Web2SVG Server"
+Write-Host "Close this window to stop the server."
+Write-Host ""
+
+$existing = Get-NetTCPConnection -LocalPort 4782 -State Listen -ErrorAction SilentlyContinue
+foreach ($connection in $existing) {
+  Write-Host "Stopping previous Web2SVG server process $($connection.OwningProcess)..."
+  Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue
 }
 
 if (-not (Test-Path "node_modules")) {
@@ -35,28 +31,30 @@ if (-not (Test-Path "node_modules")) {
 
 New-Item -ItemType Directory -Path "logs" -Force | Out-Null
 
-$env:WEB2SVG_NO_AUTO_OPEN = "1"
-Start-Process `
-  -FilePath "corepack.cmd" `
-  -ArgumentList @("pnpm", "app") `
-  -WorkingDirectory $root `
-  -WindowStyle Hidden `
-  -RedirectStandardOutput (Join-Path $root "logs\server.out.log") `
-  -RedirectStandardError (Join-Path $root "logs\server.err.log")
-
-for ($i = 0; $i -lt 40; $i += 1) {
-  if (Test-Web2SvgServer) {
-    Start-Process `
-      -FilePath "node.exe" `
-      -ArgumentList @((Join-Path $root "dist\open-panel.js"), $url) `
-      -WorkingDirectory $root `
-      -WindowStyle Hidden `
-      -RedirectStandardOutput (Join-Path $root "logs\panel.out.log") `
-      -RedirectStandardError (Join-Path $root "logs\panel.err.log")
-    return
+$opener = @"
+`$url = "$url"
+`$root = "$root"
+for (`$i = 0; `$i -lt 80; `$i += 1) {
+  try {
+    Invoke-WebRequest -Uri "`$url/api/status" -UseBasicParsing -TimeoutSec 1 | Out-Null
+    `$panel = Join-Path `$root "dist\open-panel.js"
+    if (Test-Path `$panel) {
+      Start-Process -FilePath "node.exe" -ArgumentList @(`$panel, `$url) -WorkingDirectory `$root -WindowStyle Hidden
+    } else {
+      Start-Process `$url
+    }
+    exit 0
+  } catch {
+    Start-Sleep -Milliseconds 500
   }
-  Start-Sleep -Milliseconds 500
 }
+"@
 
-Write-Host "Web2SVG server could not start. Check logs\server.err.log"
-Read-Host "Press Enter to close"
+Start-Process `
+  -FilePath "powershell.exe" `
+  -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $opener) `
+  -WorkingDirectory $root `
+  -WindowStyle Hidden
+
+$env:WEB2SVG_NO_AUTO_OPEN = "1"
+corepack pnpm app

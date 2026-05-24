@@ -34,6 +34,8 @@ Double-click:
 Web2SVG.bat
 ```
 
+Keep the `Web2SVG Server` terminal window open while using the app. Close that terminal window when you want to stop the server.
+
 The control panel opens in Chromium at:
 
 ```text
