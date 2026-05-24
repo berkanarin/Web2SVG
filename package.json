@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "playwright": "^1.56.0",
+    "pngjs": "^7.0.0",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/pngjs": "^6.0.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

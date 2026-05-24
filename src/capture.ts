@@ -1,11 +1,18 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { PNG } from "pngjs";
 import type { CaptureOptions, CaptureResult, LayerAsset, LayerCandidate } from "./types.js";
 import { ensureCleanDir, sanitizeFilePart } from "./utils.js";
-import { readFile } from "node:fs/promises";
 
 interface PngSize {
+  width: number;
+  height: number;
+}
+
+interface TrimmedPng {
+  x: number;
+  y: number;
   width: number;
   height: number;
 }
@@ -548,25 +555,41 @@ async function captureLayers(
   for (const [index, candidate] of candidates.entries()) {
     const fileName = `${String(index + 1).padStart(3, "0")}-${sanitizeFilePart(candidate.label)}.png`;
     const filePath = path.join(layersDir, fileName);
+    const padding = layerPadding(candidate);
+    const clipX = Math.max(0, candidate.x - padding);
+    const clipY = Math.max(0, candidate.y - padding);
+    const clipRight = Math.min(pageBounds.width, candidate.x + candidate.width + padding);
+    const clipBottom = Math.min(pageBounds.height, candidate.y + candidate.height + padding);
+    const clipWidth = clipRight - clipX;
+    const clipHeight = clipBottom - clipY;
 
     await addLayerIsolationStyle(page, candidate.id);
     try {
+      if (clipWidth <= 1 || clipHeight <= 1) continue;
+
       await page.screenshot({
         path: filePath,
         omitBackground: true,
-        fullPage: options.fullPage,
+        clip: {
+          x: clipX,
+          y: clipY,
+          width: clipWidth,
+          height: clipHeight
+        },
         timeout: options.timeoutMs
       });
-      const size = await readPngSize(filePath);
+      const trimmed = await trimTransparentPng(filePath);
+      if (!trimmed) continue;
+
       layers.push({
         ...candidate,
-        x: 0,
-        y: 0,
-        width: pageBounds.width,
-        height: pageBounds.height,
+        x: clipX + trimmed.x / options.scale,
+        y: clipY + trimmed.y / options.scale,
+        width: trimmed.width / options.scale,
+        height: trimmed.height / options.scale,
         fileName,
-        imageWidth: size.width,
-        imageHeight: size.height
+        imageWidth: trimmed.width,
+        imageHeight: trimmed.height
       });
     } catch {
       // Dynamic pages can detach elements during capture; keep the export usable with successful layers.
@@ -576,6 +599,18 @@ async function captureLayers(
   }
 
   return layers;
+}
+
+function layerPadding(candidate: LayerCandidate): number {
+  if (["block", "floating", "name", "paint", "role", "semantic"].includes(candidate.reason)) {
+    return 160;
+  }
+
+  if (candidate.position === "fixed" || candidate.position === "sticky") {
+    return 160;
+  }
+
+  return 32;
 }
 
 async function markSelectedLayers(page: Page, selectedIds: string[]): Promise<void> {
@@ -639,4 +674,38 @@ async function readPngSize(filePath: string): Promise<PngSize> {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20)
   };
+}
+
+async function trimTransparentPng(filePath: string): Promise<TrimmedPng | null> {
+  const source = PNG.sync.read(await readFile(filePath));
+  let minX = source.width;
+  let minY = source.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < source.height; y += 1) {
+    for (let x = 0; x < source.width; x += 1) {
+      const alpha = source.data[(source.width * y + x) * 4 + 3] ?? 0;
+      if (alpha === 0) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null;
+
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  const cropped = new PNG({ width, height });
+
+  for (let y = 0; y < height; y += 1) {
+    const sourceStart = ((minY + y) * source.width + minX) * 4;
+    const targetStart = y * width * 4;
+    source.data.copy(cropped.data, targetStart, sourceStart, sourceStart + width * 4);
+  }
+
+  await writeFile(filePath, PNG.sync.write(cropped));
+  return { x: minX, y: minY, width, height };
 }
