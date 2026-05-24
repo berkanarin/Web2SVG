@@ -1,0 +1,7 @@
+node_modules/
+dist/
+exports/
+profiles/
+logs/
+*.log
+.env

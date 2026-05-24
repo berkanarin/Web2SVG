@@ -1,0 +1,23 @@
+{
+  "name": "web2svg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "app": "tsc --outDir dist && node dist/server.js",
+    "capture": "tsc --outDir dist && node dist/cli.js",
+    "build": "tsc --outDir dist",
+    "check": "tsc --noEmit",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.56.0",
+    "pptxgenjs": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
