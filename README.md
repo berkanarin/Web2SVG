@@ -111,7 +111,7 @@ The app captures the current browser state without needing to move the mouse bac
 
 Keep `Split repeated items` off for the safest default behavior.
 
-Turn it on when a row/grid of repeated cards, menu tiles, icon links, or category blocks is captured as one large layer. Web2SVG will try to detect similarly sized sibling items and export them as separate layers while keeping the normal layout capture behavior unchanged.
+Turn it on when a row/grid of repeated cards, menu tiles, icon links, or category blocks is captured as one large layer. Web2SVG will try to detect similarly sized sibling items and CSS grid tracks, then export them as separate layers while keeping the normal layout capture behavior unchanged.
 
 ## Quality Settings
 
