@@ -6,6 +6,7 @@ It opens a real Chromium window, lets you log in and interact with the site, the
 
 - `web2svg_PPTX.pptx` for PowerPoint, with selectable image layers.
 - `web2svg_AE.jsx` for After Effects, which creates a comp and places the captured layers.
+- `web2svg_AE_assets/` with the PNG files used by the After Effects script.
 
 Web2SVG does not export a layered SVG. PowerPoint's SVG ungroup behavior is unreliable for complex web layouts, so the app writes a real PPTX file instead.
 
@@ -56,6 +57,7 @@ Each new capture replaces the previous files in `exports/current`.
 ```text
 exports/current/web2svg_PPTX.pptx
 exports/current/web2svg_AE.jsx
+exports/current/web2svg_AE_assets/
 ```
 
 ### PowerPoint
@@ -78,7 +80,7 @@ Choose:
 exports/current/web2svg_AE.jsx
 ```
 
-The script creates a comp at the capture size and imports each captured element as a separate layer.
+Keep `web2svg_AE.jsx` and `web2svg_AE_assets/` in the same folder. The script creates a comp at the capture size and imports each captured element as a separate layer.
 
 ## Hover Menus, Modals, And Popups
 

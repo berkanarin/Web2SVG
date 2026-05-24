@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import PptxGenJS from "pptxgenjs";
 import type { CaptureResult } from "./types.js";
@@ -18,13 +18,14 @@ export async function writeSvgPackage(result: CaptureResult, outDir: string, _em
   await rm(layersDir, { force: true, recursive: true });
 }
 
-async function pngAsBase64(filePath: string): Promise<string> {
-  const buffer = await readFile(filePath);
-  return buffer.toString("base64");
-}
-
 async function writeAfterEffectsScript(result: CaptureResult, outDir: string, layersDir: string): Promise<void> {
+  const assetsDirName = "web2svg_AE_assets";
+  const assetsDir = path.join(outDir, assetsDirName);
+  await mkdir(assetsDir, { recursive: true });
+
   const bg = result.cleanBackground ?? result.background;
+  await copyFile(path.join(layersDir, bg.fileName), path.join(assetsDir, bg.fileName));
+
   const assets = [
     {
       name: "web2svg_background",
@@ -32,20 +33,19 @@ async function writeAfterEffectsScript(result: CaptureResult, outDir: string, la
       x: 0,
       y: 0,
       width: bg.width,
-      height: bg.height,
-      base64: await pngAsBase64(path.join(layersDir, bg.fileName))
+      height: bg.height
     },
     ...(await Promise.all(
       result.layers.map(async (layer) => {
         const name = objectName(`web2svg_layer_${String(layer.domIndex).padStart(3, "0")}_${layer.label}`);
+        await copyFile(path.join(layersDir, layer.fileName), path.join(assetsDir, layer.fileName));
         return {
           name,
           fileName: layer.fileName,
           x: layer.x * result.viewport.scale,
           y: layer.y * result.viewport.scale,
           width: layer.imageWidth,
-          height: layer.imageHeight,
-          base64: await pngAsBase64(path.join(layersDir, layer.fileName))
+          height: layer.imageHeight
         };
       })
     ))
@@ -60,50 +60,23 @@ async function writeAfterEffectsScript(result: CaptureResult, outDir: string, la
       capturedAt: result.capturedAt,
       width: result.viewport.svgWidth,
       height: result.viewport.svgHeight,
+      assetsDirName,
       assets
     },
     null,
     2
   )};
 
-  function decodeBase64(input) {
-    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
-    var output = "";
-    var index = 0;
-    while (index < input.length) {
-      var enc1 = chars.indexOf(input.charAt(index++));
-      var enc2 = chars.indexOf(input.charAt(index++));
-      var enc3 = chars.indexOf(input.charAt(index++));
-      var enc4 = chars.indexOf(input.charAt(index++));
-      var chr1 = (enc1 << 2) | (enc2 >> 4);
-      var chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
-      var chr3 = ((enc3 & 3) << 6) | enc4;
-      output += String.fromCharCode(chr1);
-      if (enc3 !== 64) output += String.fromCharCode(chr2);
-      if (enc4 !== 64) output += String.fromCharCode(chr3);
-    }
-    return output;
-  }
-
-  function safeName(value) {
-    return String(value).replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  }
-
-  function writePng(folder, asset) {
-    var file = new File(folder.fsName + "/" + safeName(asset.name) + ".png");
-    file.encoding = "BINARY";
-    if (!file.open("w")) throw new Error("Cannot write " + file.fsName);
-    file.write(decodeBase64(asset.base64));
-    file.close();
-    return file;
-  }
-
   app.beginUndoGroup("Import Web2SVG");
   try {
     if (!app.project) app.newProject();
 
-    var tempFolder = new Folder(Folder.temp.fsName + "/web2svg_" + new Date().getTime());
-    if (!tempFolder.exists) tempFolder.create();
+    var scriptFile = new File($.fileName);
+    var exportFolder = scriptFile.parent;
+    var assetsFolder = new Folder(exportFolder.fsName + "/" + capture.assetsDirName);
+    if (!assetsFolder.exists) {
+      throw new Error("Missing AE assets folder: " + assetsFolder.fsName);
+    }
 
     var compName = "Web2SVG - " + capture.title;
     var comp = app.project.items.addComp(compName, capture.width, capture.height, 1, 10, 30);
@@ -111,7 +84,10 @@ async function writeAfterEffectsScript(result: CaptureResult, outDir: string, la
 
     for (var i = 0; i < capture.assets.length; i += 1) {
       var asset = capture.assets[i];
-      var file = writePng(tempFolder, asset);
+      var file = new File(assetsFolder.fsName + "/" + asset.fileName);
+      if (!file.exists) {
+        throw new Error("Missing AE asset: " + file.fsName);
+      }
       var footage = app.project.importFile(new ImportOptions(file));
       footage.name = asset.name;
 
