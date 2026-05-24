@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { captureCurrentPage, preparePage } from "./capture.js";
+import { captureScreenshot } from "./screenshot.js";
 import { writeSvgPackage } from "./svg.js";
 import type { CaptureMode, CaptureOptions } from "./types.js";
 import { ensureCleanDir, sanitizeFilePart } from "./utils.js";
@@ -72,6 +73,15 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") return !["false", "0", "off"].includes(value.toLowerCase());
   return fallback;
+}
+
+function screenshotDetail(value: unknown): "coarse" | "normal" | "detailed" {
+  const detail = stringValue(value, "normal");
+  return detail === "coarse" || detail === "detailed" ? detail : "normal";
+}
+
+function screenshotEngine(value: unknown): "fast" | "advanced" {
+  return stringValue(value, "fast") === "advanced" ? "advanced" : "fast";
 }
 
 function makeOptions(body: Record<string, unknown>, url: string): CaptureOptions {
@@ -210,6 +220,39 @@ async function captureSession(): Promise<Record<string, unknown>> {
   }
 }
 
+async function captureScreenshotUpload(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (busy) throw new Error("A capture is already running.");
+  busy = true;
+
+  try {
+    const outDir = path.resolve(rootDir, stringValue(body.outputRoot, "exports/current"));
+    const imageData = String(body.imageData ?? "");
+    if (!imageData) throw new Error("Screenshot image is required.");
+
+    const result = await captureScreenshot({
+      imageData,
+      fileName: stringValue(body.fileName, "screenshot.png"),
+      outDir,
+      engine: screenshotEngine(body.engine),
+      detail: screenshotDetail(body.detail),
+      maxLayers: numberValue(body.maxLayers, 80),
+      minArea: numberValue(body.minArea, 1800),
+      cleanBackground: booleanValue(body.cleanBackground, false)
+    });
+    await writeSvgPackage(result, outDir, true);
+
+    return {
+      status: "captured",
+      outDir,
+      layers: result.layers.length,
+      ae: path.join(outDir, "web2svg_AE.jsx"),
+      pptx: path.join(outDir, "web2svg_PPTX.pptx")
+    };
+  } finally {
+    busy = false;
+  }
+}
+
 async function route(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
 
@@ -244,6 +287,12 @@ async function route(request: http.IncomingMessage, response: http.ServerRespons
 
   if (request.method === "POST" && url.pathname === "/api/capture") {
     lastCapture = await captureSession();
+    sendJson(response, 200, lastCapture);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/screenshot") {
+    lastCapture = await captureScreenshotUpload(await readBody(request));
     sendJson(response, 200, lastCapture);
     return;
   }
@@ -375,10 +424,29 @@ function renderApp(): string {
       border-color: var(--accent);
       box-shadow: 0 0 0 4px rgba(59,130,246,0.12);
     }
+    input[type="file"] {
+      padding: 0.65rem 1rem;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 1rem;
+    }
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0.25rem 0;
+    }
+    .block-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .block-title h2 {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.2;
     }
     .actions {
       display: grid;
@@ -530,6 +598,54 @@ function renderApp(): string {
         <button id="reveal" class="secondary" disabled>Open Last Export</button>
         <button id="close" class="secondary">Close Browser</button>
       </div>
+
+      <div class="divider"></div>
+
+      <div class="block-title">
+        <h2>Screenshot Mode</h2>
+        <p class="small">Optional pixel-based layer split.</p>
+      </div>
+
+      <div>
+        <label for="screenshot">Screenshot Image</label>
+        <input id="screenshot" type="file" accept="image/png,image/jpeg,image/webp" />
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="shotEngine">Screenshot Engine</label>
+          <select id="shotEngine">
+            <option value="advanced">Advanced Local</option>
+            <option value="fast">Fast Local</option>
+          </select>
+        </div>
+        <div>
+          <label for="shotDetail">Layer Detail</label>
+          <select id="shotDetail">
+            <option value="normal">Normal</option>
+            <option value="coarse">Coarse</option>
+            <option value="detailed">Detailed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="shotMaxLayers">Max Layers</label>
+          <input id="shotMaxLayers" type="number" value="80" min="1" step="1" />
+        </div>
+        <div>
+          <label for="shotMinArea">Min Area</label>
+          <input id="shotMinArea" type="number" value="1800" min="100" step="100" />
+        </div>
+      </div>
+
+      <label>
+        <input id="shotCleanBg" type="checkbox" style="width:auto;min-height:auto;margin-right:0.5rem" />
+        Clean background fill (experimental)
+      </label>
+
+      <button id="captureScreenshot" class="secondary">Capture Screenshot</button>
     </section>
 
     <section class="activity">
@@ -549,6 +665,7 @@ function renderApp(): string {
     const captureButton = $("capture");
     const closeButton = $("close");
     const revealButton = $("reveal");
+    const screenshotButton = $("captureScreenshot");
 
     function write(message, kind) {
       const line = document.createElement("div");
@@ -563,6 +680,7 @@ function renderApp(): string {
       captureButton.disabled = value || captureButton.dataset.ready !== "true";
       closeButton.disabled = value;
       revealButton.disabled = value || revealButton.dataset.ready !== "true";
+      screenshotButton.disabled = value;
       status.textContent = label || (value ? "Working" : "Ready");
     }
 
@@ -595,6 +713,42 @@ function renderApp(): string {
         }
         throw error;
       }
+    }
+
+    function readScreenshotAsPng(file) {
+      return new Promise((resolve, reject) => {
+        if (!file) {
+          reject(new Error("Choose a screenshot image first."));
+          return;
+        }
+
+        const image = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        image.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Could not prepare screenshot canvas.");
+            context.drawImage(image, 0, 0);
+            resolve({
+              dataUrl: canvas.toDataURL("image/png"),
+              width: canvas.width,
+              height: canvas.height
+            });
+          } catch (error) {
+            reject(error);
+          } finally {
+            URL.revokeObjectURL(objectUrl);
+          }
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Could not read the selected image."));
+        };
+        image.src = objectUrl;
+      });
     }
 
     openButton.addEventListener("click", async () => {
@@ -637,6 +791,39 @@ function renderApp(): string {
         write(error.message, "danger");
       } finally {
         setBusy(false, "Browser Ready");
+      }
+    });
+
+    screenshotButton.addEventListener("click", async () => {
+      setBusy(true, "Capturing");
+      write("Preparing screenshot upload...");
+      try {
+        const file = $("screenshot").files && $("screenshot").files[0];
+        const image = await readScreenshotAsPng(file);
+        write("Screenshot loaded: " + image.width + "x" + image.height);
+        write("Splitting screenshot into visual layers...");
+        const result = await post("/api/screenshot", {
+          imageData: image.dataUrl,
+          fileName: file.name,
+          outputRoot: $("output").value,
+          engine: $("shotEngine").value,
+          detail: $("shotDetail").value,
+          maxLayers: Number($("shotMaxLayers").value),
+          minArea: Number($("shotMinArea").value),
+          cleanBackground: $("shotCleanBg").checked
+        });
+        status.textContent = "Captured";
+        write("Saved: " + result.outDir, "success");
+        write("Layers: " + result.layers);
+        if (result.pptx) write("PPTX: " + result.pptx, "success");
+        if (result.ae) write("AE JSX: " + result.ae, "success");
+        revealButton.dataset.ready = "true";
+        revealButton.disabled = false;
+      } catch (error) {
+        status.textContent = "Error";
+        write(error.message, "danger");
+      } finally {
+        setBusy(false, captureButton.dataset.ready === "true" ? "Browser Ready" : "Ready");
       }
     });
 

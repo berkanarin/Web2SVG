@@ -108,7 +108,7 @@ async function writeAfterEffectsScript(result: CaptureResult, outDir: string, la
 }
 
 async function writePowerPoint(result: CaptureResult, outDir: string, layersDir: string): Promise<void> {
-  const Pptx = PptxGenJS as unknown as typeof import("pptxgenjs").default;
+  const Pptx = ((PptxGenJS as unknown as { default?: unknown }).default ?? PptxGenJS) as typeof import("pptxgenjs").default;
   const pptx = new Pptx();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Web2SVG";

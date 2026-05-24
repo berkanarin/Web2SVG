@@ -12,6 +12,8 @@ Web2SVG does not export a layered SVG. PowerPoint's SVG ungroup behavior is unre
 
 Captured layers are cropped to their visible pixel bounds and placed back with exact coordinates. Only the background remains full canvas size.
 
+The main workflow still uses a live URL and browser DOM data. Screenshot Mode is an extra pixel-based option for uploaded screenshots when a live page is not available.
+
 ## Requirements
 
 - Windows
@@ -62,6 +64,25 @@ There are two Chromium windows during normal use:
 5. Open `exports/current`.
 
 Each new capture replaces the previous files in `exports/current`.
+
+## Screenshot Mode
+
+Use Screenshot Mode when you already have a PNG, JPG, or WebP screenshot.
+
+1. Choose an image under `Screenshot Mode`.
+2. Pick `Layer Detail`.
+3. Click `Capture Screenshot`.
+4. Open `exports/current`.
+
+This mode does not inspect DOM or CSS. It detects visual regions from pixels, crops them to their visible bounds, and exports the same PPTX and After Effects files as the URL workflow.
+
+`Advanced Local` is the recommended engine. It keeps the model-free workflow but uses stricter UI-region cleanup for cards and panels. `Fast Local` is the original quick detector.
+
+`Normal` is the safest detail setting. `Coarse` keeps larger groups together. `Detailed` tries to split more small UI pieces and can create more layers.
+
+Rounded cards and panels are exported as PNG layers with transparent corners when the surrounding background can be inferred. `Clean background fill` is experimental; it now uses a solid sampled canvas color, closer to the live URL capture workflow, and tries to export broad layout surfaces such as sidebars, top bars, cards, and panels as separate layers. Leave it off when you want the screenshot to remain visually identical.
+
+The external AI route is intentionally not bundled yet. Tools like Microsoft OmniParser, SAM/SAM2, LaMa, and OpenCV inpainting can help in specific cases, but they add runtime weight, model downloads, or large-image performance risk. Web2SVG keeps that as an optional future bridge instead of making the app heavy or fragile.
 
 ## Outputs
 
