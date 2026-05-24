@@ -31,30 +31,5 @@ if (-not (Test-Path "node_modules")) {
 
 New-Item -ItemType Directory -Path "logs" -Force | Out-Null
 
-$opener = @"
-`$url = "$url"
-`$root = "$root"
-for (`$i = 0; `$i -lt 80; `$i += 1) {
-  try {
-    Invoke-WebRequest -Uri "`$url/api/status" -UseBasicParsing -TimeoutSec 1 | Out-Null
-    `$panel = Join-Path `$root "dist\open-panel.js"
-    if (Test-Path `$panel) {
-      Start-Process -FilePath "node.exe" -ArgumentList @(`$panel, `$url) -WorkingDirectory `$root -WindowStyle Hidden
-    } else {
-      Start-Process `$url
-    }
-    exit 0
-  } catch {
-    Start-Sleep -Milliseconds 500
-  }
-}
-"@
-
-Start-Process `
-  -FilePath "powershell.exe" `
-  -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $opener) `
-  -WorkingDirectory $root `
-  -WindowStyle Hidden
-
-$env:WEB2SVG_NO_AUTO_OPEN = "1"
+$env:WEB2SVG_NO_AUTO_OPEN = "0"
 corepack pnpm app

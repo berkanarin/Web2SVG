@@ -267,18 +267,23 @@ async function route(request: http.IncomingMessage, response: http.ServerRespons
   sendJson(response, 404, { error: "Not found." });
 }
 
-function openControlPanel(url: string): void {
-  if (process.platform === "win32") {
-    exec(`start "" "${url}"`);
-    return;
-  }
+async function openControlPanel(url: string): Promise<void> {
+  const profileDir = path.resolve(rootDir, "profiles", "__web2svg-panel");
+  await mkdir(profileDir, { recursive: true });
 
-  if (process.platform === "darwin") {
-    exec(`open "${url}"`);
-    return;
-  }
+  const context = await chromium.launchPersistentContext(profileDir, {
+    headless: false,
+    viewport: {
+      width: 1280,
+      height: 820
+    },
+    deviceScaleFactor: 1,
+    colorScheme: "light",
+    args: ["--window-size=1280,820"]
+  });
 
-  exec(`xdg-open "${url}"`);
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.goto(url);
 }
 
 function renderApp(): string {
@@ -696,6 +701,9 @@ server.listen(port, "127.0.0.1", () => {
   const url = `http://127.0.0.1:${port}`;
   console.log(`Web2SVG app is running at ${url}`);
   if (process.env.WEB2SVG_NO_AUTO_OPEN !== "1") {
-    openControlPanel(url);
+    openControlPanel(url).catch((error) => {
+      console.error(`Could not open Chromium control panel: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(`Open manually: ${url}`);
+    });
   }
 });
