@@ -2,13 +2,15 @@
 
 Web2SVG is a desktop capture tool for turning a live website state into animation-friendly files.
 
-It opens a real Chromium window, lets you log in and interact with the site, then captures the current screen as layered exports:
+It opens a control panel and a real Chromium browser, lets you log in and interact with the site, then captures the current screen as layered exports:
 
 - `web2svg_PPTX.pptx` for PowerPoint, with selectable image layers.
 - `web2svg_AE.jsx` for After Effects, which creates a comp and places the captured layers.
 - `web2svg_AE_assets/` with the PNG files used by the After Effects script.
 
 Web2SVG does not export a layered SVG. PowerPoint's SVG ungroup behavior is unreliable for complex web layouts, so the app writes a real PPTX file instead.
+
+Captured layers are cropped to their visible pixel bounds and placed back with exact coordinates. Only the background remains full canvas size.
 
 ## Requirements
 
@@ -36,13 +38,20 @@ Web2SVG.bat
 
 Keep the `Web2SVG Server` terminal window open while using the app. Close that terminal window when you want to stop the server.
 
-The control panel opens in Chromium at:
+If another Web2SVG server is already running on port `4782`, the launcher stops it before starting the new one. This keeps old builds from staying alive in the background.
+
+The server opens the control panel in Chromium at:
 
 ```text
 http://127.0.0.1:4782
 ```
 
 If a site requires login, use the opened Chromium window normally. Cookies and sessions are kept under the selected profile name, so the next run can reuse the login.
+
+There are two Chromium windows during normal use:
+
+- The Web2SVG control panel.
+- The target website browser opened after clicking `Open Browser`.
 
 ## Basic Workflow
 
@@ -83,6 +92,8 @@ exports/current/web2svg_AE.jsx
 ```
 
 Keep `web2svg_AE.jsx` and `web2svg_AE_assets/` in the same folder. The script creates a comp at the capture size and imports each captured element as a separate layer.
+
+Do not move only the JSX file by itself. The JSX reads the PNG assets from the sidecar folder.
 
 ## Hover Menus, Modals, And Popups
 
