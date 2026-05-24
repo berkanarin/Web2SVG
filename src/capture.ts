@@ -265,10 +265,8 @@ async function collectCandidates(
       const mediaTags = new Set(["IMG", "PICTURE", "VIDEO", "CANVAS", "SVG"]);
       const textTags = new Set(["H1", "H2", "H3", "P", "A", "BUTTON"]);
       const candidates: Array<LayerCandidate & { score: number }> = [];
-      const syntheticSplitCandidates: Array<LayerCandidate & { score: number }> = [];
       const all = Array.from(document.body?.querySelectorAll<HTMLElement>("*") ?? []);
       const splitItemElements = new WeakSet<HTMLElement>();
-      const splitContainerElements = new WeakSet<HTMLElement>();
       let domIndex = 0;
 
       function visibleBox(element: HTMLElement): DOMRect | null {
@@ -334,95 +332,8 @@ async function collectCandidates(
         return depth;
       }
 
-      function pxList(value: string): number[] {
-        return Array.from(value.matchAll(/([\d.]+)px/g))
-          .map((match) => Number(match[1]))
-          .filter((item) => Number.isFinite(item) && item > 0);
-      }
-
-      function pxValue(value: string): number {
-        const parsed = Number.parseFloat(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-      }
-
-      function addSyntheticGridItems(element: HTMLElement, rect: DOMRect, style: CSSStyleDeclaration): void {
-        if (style.display !== "grid" && style.display !== "inline-grid") return;
-
-        const columns = pxList(style.gridTemplateColumns);
-        const rows = pxList(style.gridTemplateRows);
-        const columnGap = pxValue(style.columnGap);
-        const rowGap = pxValue(style.rowGap);
-        const paddingLeft = pxValue(style.paddingLeft);
-        const paddingTop = pxValue(style.paddingTop);
-        const contentRows = rows.length >= 1 ? rows : [rect.height - paddingTop - pxValue(style.paddingBottom)];
-        const cellCount = columns.length * contentRows.length;
-
-        if (columns.length < 3 || cellCount < 3 || cellCount > 48) return;
-
-        splitContainerElements.add(element);
-        const depth = depthOf(element);
-        const selector = selectorFor(element);
-        let y = rect.top + paddingTop;
-        let itemIndex = 0;
-
-        for (const rowHeight of contentRows) {
-          let x = rect.left + paddingLeft;
-          for (const columnWidth of columns) {
-            itemIndex += 1;
-            const centerX = x + columnWidth / 2;
-            const centerY = y + rowHeight / 2;
-            const childAtCenter = document.elementFromPoint(centerX, centerY);
-            const textHint = childAtCenter?.closest<HTMLElement>("a, button, [role='button'], [role='link'], li, article, div")
-              ?.innerText?.trim();
-            const label = (textHint || `item-${itemIndex}`)
-              .toLowerCase()
-              .replace(/[^a-z0-9._-]+/g, "-")
-              .replace(/-+/g, "-")
-              .replace(/^-|-$/g, "")
-              .slice(0, 64);
-
-            syntheticSplitCandidates.push({
-              id: element.getAttribute("data-web2svg-id") || "",
-              tag: element.tagName,
-              selector,
-              label: label || `item-${itemIndex}`,
-              role: element.getAttribute("role"),
-              x,
-              y,
-              width: columnWidth,
-              height: rowHeight,
-              zIndex: Number.parseInt(style.zIndex || "0", 10) || 0,
-              domIndex: depth * 100000 + itemIndex,
-              depth: depth + 1,
-              position: style.position,
-              opacity: Number.parseFloat(style.opacity || "1"),
-              reason: "split-item",
-              score: 120 + Math.min(40, (columnWidth * rowHeight) / 20000)
-            });
-
-            x += columnWidth + columnGap;
-          }
-          y += rowHeight + rowGap;
-        }
-      }
-
-      if (splitRepeatedItems) {
-        let assignedIndex = 0;
-        for (const element of all) {
-          assignedIndex += 1;
-          if (!element.getAttribute("data-web2svg-id")) {
-            element.setAttribute("data-web2svg-id", `w2s-${assignedIndex}`);
-          }
-        }
-      }
-
       if (splitRepeatedItems) {
         for (const parent of all) {
-          const parentRect = visibleBox(parent);
-          if (parentRect) {
-            addSyntheticGridItems(parent, parentRect, window.getComputedStyle(parent));
-          }
-
           const children = Array.from(parent.children).filter(
             (child): child is HTMLElement => child instanceof HTMLElement
           );
@@ -447,7 +358,6 @@ async function collectCandidates(
 
           for (const group of groups.values()) {
             if (group.length < 3) continue;
-            splitContainerElements.add(parent);
             for (const item of group) {
               splitItemElements.add(item.child);
               const fillChild = item.child.querySelector<HTMLElement>("a, button, [role='button'], [role='link']");
@@ -504,20 +414,18 @@ async function collectCandidates(
         const isFloating = style.position === "fixed" || style.position === "sticky";
         const hasPaint = style.backgroundImage !== "none" || style.boxShadow !== "none";
         const isSplitItem = splitRepeatedItems && splitItemElements.has(element);
-        const isSplitContainer = splitRepeatedItems && splitContainerElements.has(element);
         const includeDense = mode === "dense" && (area >= minArea * 2 || isMedia || isInteractive || isText);
         const includeSemantic =
+          isSemanticTag ||
+          isRoleHint ||
+          isNameHint ||
+          isMedia ||
+          isText ||
+          isLargeBlock ||
+          isFloating ||
+          hasPaint ||
           isSplitItem ||
-          (!isSplitContainer &&
-            (isSemanticTag ||
-              isRoleHint ||
-              isNameHint ||
-              isMedia ||
-              isText ||
-              isLargeBlock ||
-              isFloating ||
-              hasPaint ||
-              isInteractive));
+          isInteractive;
 
         if (!includeSemantic && !includeDense) continue;
 
@@ -546,7 +454,7 @@ async function collectCandidates(
           (hasPaint ? 15 : 0) +
           Math.min(40, area / 20000) +
           Math.min(20, Math.max(0, normalizedZ));
-        const id = element.getAttribute("data-web2svg-id") || `w2s-${domIndex}`;
+        const id = `w2s-${domIndex}`;
         element.setAttribute("data-web2svg-id", id);
 
         candidates.push({
@@ -567,11 +475,6 @@ async function collectCandidates(
           reason,
           score
         });
-      }
-
-      for (const candidate of syntheticSplitCandidates) {
-        if (!candidate.id) continue;
-        candidates.push(candidate);
       }
 
       const deduped = new Map<string, LayerCandidate & { score: number }>();
@@ -628,10 +531,7 @@ async function collectCandidates(
           continue;
         }
 
-        const keptContainer =
-          candidate.reason === "split-item"
-            ? undefined
-            : pruned.find((parent) => keepsDescendants(parent) && contains(parent, candidate));
+        const keptContainer = pruned.find((parent) => keepsDescendants(parent) && contains(parent, candidate));
         if (keptContainer) {
           continue;
         }
@@ -772,10 +672,6 @@ async function captureLayers(
 }
 
 function layerPadding(candidate: LayerCandidate): number {
-  if (candidate.reason === "split-item") {
-    return 0;
-  }
-
   if (["block", "floating", "name", "paint", "role", "semantic"].includes(candidate.reason)) {
     return 160;
   }
